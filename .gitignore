@@ -2,6 +2,8 @@
 dev.ipynb
 pretrained_mdls/
 eval_data/
+corpora
+.vscode
 
 __pycache__/
 *.py[cod]
