@@ -2,7 +2,6 @@
 dev.ipynb
 pretrained_mdls/
 eval_data/
-ori_whisper/
 
 __pycache__/
 *.py[cod]

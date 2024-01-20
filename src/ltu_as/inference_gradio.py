@@ -16,8 +16,9 @@ import numpy as np
 import datetime
 import re
 import skimage.measure
-import whisper_at
-from whisper.model import Whisper, ModelDimensions
+# import whisper_at
+from sp_llm.whisper import load_model as load_text_whisper
+from sp_llm.ltu_as.whisper.model import Whisper, ModelDimensions
 
 # this is a dirty workaround to have two whisper instances, whisper model for extract encoder feature, and whisper-at to get transcription.
 # in future version, this two instance will be unified
@@ -32,12 +33,12 @@ def convert_params_to_float32(model):
                 param.data = param.data.float()
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-whisper_text_model = whisper_at.load_model("large-v2", device='cuda:1')
+whisper_text_model = load_text_whisper("large-v2", device='cuda')
 
 def load_whisper():
     mdl_size = 'large-v1'
     checkpoint_path = '../../pretrained_mdls/{:s}.pt'.format(mdl_size)
-    checkpoint = torch.load(checkpoint_path, map_location='cuda:0')
+    checkpoint = torch.load(checkpoint_path, map_location='cuda')
     dims = ModelDimensions(**checkpoint["dims"])
     whisper_feat_model = Whisper(dims)
     whisper_feat_model.load_state_dict(checkpoint["model_state_dict"], strict=False)
