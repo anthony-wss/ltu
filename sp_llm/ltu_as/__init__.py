@@ -23,6 +23,10 @@ def convert_params_to_float32(model):
             if param.dtype == torch.float16:
                 print(f"Converting parameter '{name}' to float32")
                 param.data = param.data.float()
+        if "audio_proj" in name:
+            if param.dtype == torch.float16:
+                print(f"Converting parameter '{name}' to float32")
+                param.data = param.data.float()
 
 
 def load_model_with_tknzer(device="cpu"):

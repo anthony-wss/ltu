@@ -29,6 +29,7 @@ def trim_string(a):
 text_cache = {}
 def load_audio_trans(filename, device="cpu"):
     global text_cache
+    # To save vram
     whisper_text_model = whisper.load_model("tiny", device=device)
     whisper_feat_model = ltu_whisper.load_model(device=device)
     if filename not in text_cache:
@@ -54,10 +55,7 @@ def predict(model, tokenizer, audio_path, question, prompt_template="alpaca_shor
 
     if audio_path is not None:
         cur_audio_input, cur_input = load_audio_trans(audio_path, device=device)
-        if not torch.cuda.is_available():
-            pass
-        else:
-            cur_audio_input = cur_audio_input.unsqueeze(0).half().to(device)
+        cur_audio_input = cur_audio_input.unsqueeze(0).to(device)
 
     instruction = question
     prompter = Prompter(prompt_template)

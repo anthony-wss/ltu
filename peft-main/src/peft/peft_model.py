@@ -466,6 +466,11 @@ class PeftModelForCausalLM(PeftModel):
         super().__init__(model, peft_config, adapter_name)
         self.base_model_prepare_inputs_for_generation = self.base_model.prepare_inputs_for_generation
 
+    def anthony_func(self, audio_input):
+        print("DEBUG before:", audio_input.shape)
+        audio_input = self.base_model.audio_proj(audio_input)  # [2, 25, 4096]
+        print("DEBUG after:", audio_input.shape)
+
     def forward(
         self,
         input_ids=None,
