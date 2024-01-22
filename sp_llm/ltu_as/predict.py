@@ -100,3 +100,59 @@ def predict(model, tokenizer, audio_path, question, prompt_template="alpaca_shor
     #     json.dump(eval_log, outfile, indent=1)
     print('eclipse time: ', end_time-begin_time, ' seconds.')
     return trim_string(output)
+
+
+def predict_with_prefix(model, tokenizer, audio_path, prefix_inputs, inputs, prompt_template="alpaca_short", device="cpu"):
+    print('audio path, ', audio_path)
+    begin_time = time.time()
+
+    if audio_path is not None:
+        cur_audio_input, cur_input = load_audio_trans(audio_path, device=device)
+        cur_audio_input = cur_audio_input.unsqueeze(0).to(device)
+
+    # prompter = Prompter(prompt_template)
+    # prompt = prompter.generate_prompt(instruction, cur_input)
+    print('Input:')
+    print(prefix_inputs + "<A1, A2, ..., A25>" + inputs)
+    prefix_inputs = tokenizer(prefix_inputs, return_tensors="pt")
+    prefix_input_ids = prefix_inputs["input_ids"].to(device)
+    inputs = tokenizer(inputs, return_tensors="pt")
+    input_ids = inputs["input_ids"].to(device)
+
+    temp, top_p, top_k = 0.1, 0.95, 500
+
+    generation_config = GenerationConfig(
+        do_sample=True,
+        temperature=temp,
+        top_p=top_p,
+        top_k=top_k,
+        repetition_penalty=1.1,
+        max_new_tokens=500,
+        bos_token_id=model.config.bos_token_id,
+        eos_token_id=model.config.eos_token_id,
+        pad_token_id=model.config.pad_token_id,
+        num_return_sequences=1
+    )
+
+    # Without streaming
+    with torch.no_grad():
+        generation_output = model.generate(
+            prefix_input_ids=prefix_input_ids,
+            input_ids=input_ids,
+            audio_input=cur_audio_input,
+            generation_config=generation_config,
+            return_dict_in_generate=True,
+            output_scores=True,
+            max_new_tokens=500,
+        )
+    s = generation_output.sequences[0]
+    output = tokenizer.decode(s)
+    output = output[5:-4]
+    end_time = time.time()
+    print(trim_string(output))
+    # cur_res = {'audio_id': audio_path, 'instruction': instruction, 'input': cur_input, 'output': trim_string(output)}
+    # eval_log.append(cur_res)
+    # with open(log_save_path, 'w') as outfile:
+    #     json.dump(eval_log, outfile, indent=1)
+    print('eclipse time: ', end_time - begin_time, ' seconds.')
+    return trim_string(output)

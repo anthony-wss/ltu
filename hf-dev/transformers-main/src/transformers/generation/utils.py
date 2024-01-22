@@ -1111,6 +1111,7 @@ class GenerationMixin:
     @torch.no_grad()
     def generate(
         self,
+        prefix_input_ids = None,
         inputs: Optional[torch.Tensor] = None,
         audio_input = None,
         generation_config: Optional[GenerationConfig] = None,
@@ -1465,6 +1466,7 @@ class GenerationMixin:
 
             # 13. run sample
             return self.sample(
+                prefix_input_ids,
                 input_ids,
                 audio_input,
                 logits_processor=logits_processor,
@@ -2298,6 +2300,7 @@ class GenerationMixin:
 
     def sample(
         self,
+        prefix_input_ids,
         input_ids: torch.LongTensor,
         audio_input,
         logits_processor: Optional[LogitsProcessorList] = None,
@@ -2474,6 +2477,13 @@ class GenerationMixin:
             model_kwargs['attention_mask'] = torch.concat([ori_att_mask, audio_att_mask], dim=1)
         else:
             pass
+        
+        if prefix_input_ids is not None:
+            ori_att_mask = model_kwargs['attention_mask']
+            prefix_att_mask = torch.ones((ori_att_mask.shape[0], prefix_input_ids.shape[1]), dtype=torch.bool, device=ori_att_mask.device)
+            model_kwargs['attention_mask'] = torch.concat([ori_att_mask, prefix_att_mask], dim=1)
+        else:
+            pass
 
         # auto-regressive generation
         loop_idx = 0
@@ -2491,7 +2501,8 @@ class GenerationMixin:
             # after the first loop, the audio will be in the "past values", so no need to input
             if loop_idx != 0:
                 audio_input = None
-            model_inputs = self.prepare_inputs_for_generation(input_ids, audio_input, **model_kwargs)
+                prefix_input_ids = None
+            model_inputs = self.prepare_inputs_for_generation(prefix_input_ids, input_ids, audio_input, **model_kwargs)
             loop_idx += 1
             outputs = self(
                 **model_inputs,

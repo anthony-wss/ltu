@@ -362,6 +362,16 @@ class LlamaAttention(nn.Module):
 
         past_key_value = (key_states, value_states) if use_cache else None
 
+        # print("DEBUG:")
+        # print("torch.matmul(query_states, key_states.transpose(2, 3))")
+        # print(query_states.shape, key_states.transpose(2, 3).shape)
+        # import pickle
+        # with open("./temp_query_states.pkl", "wb") as fout:
+        #     pickle.dump(query_states.cpu(), fout)
+        # with open("./temp_key_states.pkl", "wb") as fout:
+        #     pickle.dump(key_states.cpu(), fout)
+        # print(query_states)
+        # print(key_states)
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
@@ -638,6 +648,7 @@ class LlamaModel(LlamaPreTrainedModel):
     @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
     def forward(
         self,
+        prefix_input_ids = None,
         input_ids: torch.LongTensor = None,
         audio_input = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -649,6 +660,25 @@ class LlamaModel(LlamaPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
+        # print("Enter forward:")
+        # print("input_ids: ")
+        # print(input_ids)
+        # print("audio_input: ")
+        # if audio_input is not None:
+        #     print(audio_input.shape)
+        # print("attention_mask: ")
+        # print(attention_mask)
+        # print("position_ids: ")
+        # print(position_ids)
+        # print("inputs_embeds: ")
+        # print(inputs_embeds)
+        # print("use_cache")
+        # print(use_cache)
+        # print("past_key_values: ")
+        # if past_key_values is not None:
+        #     print(len(past_key_values))
+        #     print(len(past_key_values[0]))
+        # print("=" * 20 + '\n')
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -675,9 +705,15 @@ class LlamaModel(LlamaPreTrainedModel):
             audio_length = audio_input.shape[1]
         else:
             audio_length = 0
+            
+        if prefix_input_ids is not None:
+            assert prefix_input_ids.shape[0] == 1, "inference with prefix_inputs does not support batched input"
+            prefix_length = prefix_input_ids.shape[1]
+        else:
+            prefix_length = 0
 
         # all audio and text length together
-        seq_length = audio_length + seq_length # [B, length, 1280]
+        seq_length = prefix_length + audio_length + seq_length # [B, length, 1280]
 
         seq_length_with_past = seq_length
         past_key_values_length = 0
@@ -706,6 +742,13 @@ class LlamaModel(LlamaPreTrainedModel):
             else:
                 inputs_embeds = torch.concat([audio_input, inputs_embeds.to(audio_input.device)], dim=1)  # [2, 25+96, 4096]
 
+        if prefix_input_ids is not None:
+            prefix_embeds = self.embed_tokens(prefix_input_ids)
+            if prefix_input_ids.device == inputs_embeds.device:
+                inputs_embeds = torch.concat([prefix_embeds, inputs_embeds], dim=1)
+            else:
+                inputs_embeds = torch.concat([prefix_embeds, inputs_embeds.to(prefix_embeds.device)], dim=1)
+
         if attention_mask is None:
             attention_mask = torch.ones(
                 (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
@@ -728,6 +771,25 @@ class LlamaModel(LlamaPreTrainedModel):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if use_cache else None
+
+        # print("Just before Decoder: ")
+        # print("input_ids: ")
+        # print(input_ids)
+        # print("audio_input: ")
+        # if audio_input is not None:
+        #     print(audio_input.shape)
+        # print("attention_mask: ")
+        # print(attention_mask)
+        # print("position_ids: ")
+        # print(position_ids)
+        # print("inputs_embeds: ")
+        # print(inputs_embeds)
+        # print("use_cache")
+        # print(use_cache)
+        # print("input_embeds:", inputs_embeds.shape)
+        # print("attention_mask:", attention_mask)
+        # print("position_ids:", position_ids)
+        # print('=' * 20 + '\n')
 
         for idx, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
@@ -752,6 +814,12 @@ class LlamaModel(LlamaPreTrainedModel):
                     None,
                 )
             else:
+                # print("layer", idx)
+                # print(hidden_states.shape)
+                # if past_key_value is not None:
+                #     print(past_key_value[0].shape, past_key_value[1].shape)
+                # else:
+                #     print("None None")
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=attention_mask,
@@ -820,6 +888,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
     @replace_return_docstrings(output_type=CausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
+        prefix_input_ids = None,
         input_ids: torch.LongTensor = None,
         audio_input=None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -866,6 +935,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
+            prefix_input_ids=prefix_input_ids,
             input_ids=input_ids,
             audio_input=audio_input,
             attention_mask=attention_mask,
@@ -907,9 +977,8 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
         )
 
     def prepare_inputs_for_generation(
-        self, input_ids, audio_input, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
+        self, prefix_input_ids, input_ids, audio_input, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
     ):
-        #print('go into prepare_input_for_gen loop')
         if past_key_values:
             input_ids = input_ids[:, -1:]
 
@@ -925,7 +994,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
-            model_inputs = {"input_ids": input_ids, "audio_input": audio_input}
+            model_inputs = {"prefix_input_ids": prefix_input_ids, "input_ids": input_ids, "audio_input": audio_input}
 
         model_inputs.update(
             {
